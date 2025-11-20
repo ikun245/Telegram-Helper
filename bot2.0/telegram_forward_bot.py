@@ -321,6 +321,10 @@ class TelegramForwardBot:
             await self.send_paraphrase_settings_panel(query.message.chat_id, context)
             context.user_data['last_menu'] = 'paraphrase_settings' # 保存当前菜单状态
             return
+        elif query.data == "keyword_filter_menu": # New callback for keyword filter menu
+            await self.send_keyword_filter_panel(query.message.chat_id, context)
+            context.user_data['last_menu'] = 'keyword_filter' # Save current menu state
+            return
 
         # 管理员管理
         if query.data == "add_admin_prompt":
@@ -394,8 +398,25 @@ class TelegramForwardBot:
             await query.edit_message_text(text="请发送要删除的伪原创规则的键 (例如: `A`)")
             context.user_data['awaiting_input'] = 'remove_paraphrase_rule'
 
+        # 关键词过滤设置
+        elif query.data == "add_keyword_filter_prompt":
+            await query.edit_message_text(text="请发送要添加的过滤关键词")
+            context.user_data['awaiting_input'] = 'add_keyword_filter'
+        elif query.data == "list_keyword_filters":
+            keywords = self.config['forward_settings']['keyword_filter']
+            if not keywords:
+                await query.edit_message_text(text="❌ 当前没有配置过滤关键词")
+                return
+            text = "关键词过滤列表:\n\n"
+            for i, keyword in enumerate(keywords, 1):
+                text += f"{i}. `{keyword}`\n"
+            await query.edit_message_text(text=text)
+        elif query.data == "remove_keyword_filter_prompt":
+            await query.edit_message_text(text="请发送要删除的过滤关键词")
+            context.user_data['awaiting_input'] = 'remove_keyword_filter'
+
         # 最后刷新当前面板，以便用户可以看到更改（例如模式切换）
-        if query.data not in ["main_menu", "admin_management_menu", "forward_settings_menu", "paraphrase_settings_menu"]:
+        if query.data not in ["main_menu", "admin_management_menu", "forward_settings_menu", "paraphrase_settings_menu", "keyword_filter_menu"]:
             # 如果不是菜单导航，则刷新当前菜单
             if context.user_data.get('last_menu') == "admin_management":
                 await self.send_admin_management_panel(query.message.chat_id, context)
@@ -403,6 +424,8 @@ class TelegramForwardBot:
                 await self.send_forward_settings_panel(query.message.chat_id, context)
             elif context.user_data.get('last_menu') == "paraphrase_settings":
                 await self.send_paraphrase_settings_panel(query.message.chat_id, context)
+            elif context.user_data.get('last_menu') == "keyword_filter": # Refresh keyword filter menu
+                await self.send_keyword_filter_panel(query.message.chat_id, context)
             else:
                 await self.send_admin_panel(query.message.chat_id, context)
 
@@ -437,6 +460,7 @@ class TelegramForwardBot:
             [InlineKeyboardButton("设置转发延迟", callback_data="set_delay_prompt")],
             [InlineKeyboardButton("切换来源信息显示", callback_data="toggle_source_info")],
             [InlineKeyboardButton("伪原创设置", callback_data="paraphrase_settings_menu")],
+            [InlineKeyboardButton("关键词过滤", callback_data="keyword_filter_menu")], # New button
             [InlineKeyboardButton("🔙 返回主菜单", callback_data="main_menu")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -452,6 +476,17 @@ class TelegramForwardBot:
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await context.bot.send_message(chat_id=chat_id, text="📝 伪原创设置", reply_markup=reply_markup)
+
+    async def send_keyword_filter_panel(self, chat_id: int, context: ContextTypes.DEFAULT_TYPE):
+        """发送关键词过滤设置子菜单"""
+        keyboard = [
+            [InlineKeyboardButton("添加过滤关键词", callback_data="add_keyword_filter_prompt")],
+            [InlineKeyboardButton("列出过滤关键词", callback_data="list_keyword_filters")],
+            [InlineKeyboardButton("删除过滤关键词", callback_data="remove_keyword_filter_prompt")],
+            [InlineKeyboardButton("🔙 返回转发设置", callback_data="forward_settings_menu")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await context.bot.send_message(chat_id=chat_id, text="关键词过滤设置", reply_markup=reply_markup)
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """处理消息转发"""
@@ -471,6 +506,12 @@ class TelegramForwardBot:
         # 检查是否来自源频道
         if chat_id not in self.config['source_channels']:
             return
+        
+        content_type = self.get_message_type(message)
+        if self.should_filter_message(message, content_type):
+            logger.info(f"消息 {message.message_id} 被过滤，不进行转发。")
+            return
+        
         # 将消息传递给媒体组处理器
         await self.media_group_handler.add_message(message, self.forward_messages_group)
 
@@ -553,6 +594,22 @@ class TelegramForwardBot:
                     await context.bot.send_message(chat_id=chat_id, text=f"✅ 已移除伪原创规则: `{key_to_remove}`")
                 else:
                     await context.bot.send_message(chat_id=chat_id, text="❌ 该伪原创规则不存在")
+            elif action == 'add_keyword_filter': # Handle adding keyword filter
+                keyword = input_text.strip()
+                if keyword and keyword not in self.config['forward_settings']['keyword_filter']:
+                    self.config['forward_settings']['keyword_filter'].append(keyword)
+                    self.save_config()
+                    await context.bot.send_message(chat_id=chat_id, text=f"✅ 已添加过滤关键词: `{keyword}`")
+                else:
+                    await context.bot.send_message(chat_id=chat_id, text="❌ 过滤关键词已存在或无效")
+            elif action == 'remove_keyword_filter': # Handle removing keyword filter
+                keyword_to_remove = input_text.strip()
+                if keyword_to_remove in self.config['forward_settings']['keyword_filter']:
+                    self.config['forward_settings']['keyword_filter'].remove(keyword_to_remove)
+                    self.save_config()
+                    await context.bot.send_message(chat_id=chat_id, text=f"✅ 已移除过滤关键词: `{keyword_to_remove}`")
+                else:
+                    await context.bot.send_message(chat_id=chat_id, text="❌ 该过滤关键词不存在")
 
         except ValueError:
             await context.bot.send_message(chat_id=chat_id, text="❌ 无效的输入，请提供一个有效的数字ID或URL。")
@@ -567,6 +624,8 @@ class TelegramForwardBot:
                 await self.send_forward_settings_panel(chat_id, context)
             elif context.user_data.get('last_menu') == "paraphrase_settings":
                 await self.send_paraphrase_settings_panel(chat_id, context)
+            elif context.user_data.get('last_menu') == "keyword_filter": # Refresh keyword filter menu
+                await self.send_keyword_filter_panel(chat_id, context)
             else:
                 await self.send_admin_panel(chat_id, context)
     
@@ -892,17 +951,23 @@ class TelegramForwardBot:
     
     def should_filter_message(self, message: Message, content_type: str) -> bool:
         """检查消息是否应被过滤"""
+        logger.info(f"检查消息是否需要过滤。消息ID: {message.message_id}, 内容类型: {content_type}")
         # 内容类型过滤
         if content_type in self.config['forward_settings']['filter_content_types']:
+            logger.info(f"消息被内容类型过滤: {content_type}")
             return True
         
         # 关键词过滤
-        if message.text and self.config['forward_settings']['keyword_filter']:
-            text_lower = message.text.lower()
+        message_content = message.text or message.caption
+        if message_content and self.config['forward_settings']['keyword_filter']:
+            text_lower = message_content.lower()
+            logger.info(f"检查关键词过滤。消息文本: '{text_lower}', 过滤关键词: {self.config['forward_settings']['keyword_filter']}")
             for keyword in self.config['forward_settings']['keyword_filter']:
                 if keyword.lower() in text_lower:
+                    logger.info(f"消息被关键词过滤: '{keyword}' in '{message_content}'")
                     return True
         
+        logger.info(f"消息 {message.message_id} 未被过滤。")
         return False
     
     async def forward_messages_group(self, messages: List[Message]):
