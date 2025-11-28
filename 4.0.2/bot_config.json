@@ -1,0 +1,31 @@
+{
+  "bot_token": "YOUR_BOT_TOKEN_HERE",
+  "admins": [],
+  "source_channels": [],
+  "target_channels": [],
+  "forward_settings": {
+    "preserve_sender": false,
+    "add_source_info": true,
+    "filter_content_types": [],
+    "keyword_filter": [],
+    "delay_seconds": 0,
+    "batch_forward": false,
+    "max_forwards_per_minute": 60,
+    "media_group_timeout": 3
+  },
+  "notification_settings": {
+    "notify_admin_on_error": true,
+    "daily_report": true,
+    "report_channel": null
+  },
+  "paraphrase_rules": {},
+  "deepseek_settings": {
+    "enabled": false,
+    "api_key": "",
+    "base_url": "https://api. deepseek.com",
+    "model": "deepseek-chat",
+    "system_prompt": "你是一个专业的文本重写助手。请将用户提供的文本进行重写，保持原意但使用不同的表达方式。保持原文的语言。只返回重写后的文本，不要添加任何解释。",
+    "max_tokens": 2000,
+    "temperature": 0.7
+  }
+}
