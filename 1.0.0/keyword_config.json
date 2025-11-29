@@ -2,16 +2,14 @@
   "bot_token": "",
   "admins": [],
   "notify_users": [],
-  "keywords": [],
-  "keyword_rules": [],
+  "keywords": [
+  ],
+  "allowed_senders": [],
+  "user_keywords": {},
+  "user_blocked": {},
   "settings": {
     "case_sensitive": false,
-    "regex_enabled": false,
     "include_source_info": true,
-    "include_message_link": true,
-    "alert_cooldown": 0,
     "max_message_length": 500
-  },
-  "whitelist_chats": [],
-  "blacklist_chats": []
+  }
 }
